@@ -104,7 +104,57 @@ void accept_request(int client)
   // 如果这个请求是一个 GET 方法的话
   if (strcasecmp(method, "GET") == 0)
   {
+    //用一个指针指向 url,  query_string 是一个指针
+    query_string = url;
+  
+    // 去遍历这个 URL， 跳过字符 ? 前面的所有字符， 如果遍历完毕也没找到字符 ? ， 则退出循环
+    while ( (*query_string != '?') && (*query_string != '\0'))
+      query_string++;       // 指针的值不断增加 1，  指向 url 的下一个字符
     
+    // 退出循环后检查当前的字符是 ? 还是 字符串（url） 的结尾
+    if (*query_string == '?') 
+    {
+      //如果是 ? 的话， 证明这个请求需要调用 cgi, 将 cgi 标志变量为1 （true）
+      cgi = 1;
+      // 从字符  ? 处把字符串 url 给分隔为两份
+      *query_string = '\0';     //NOTE 好好理解一下这里的指针操作
+      // 使指针指向字符 ? 后面的那个字符
+      query_string++;
+    }
+  } // END IF GET METHOD
+  
+  //将前面分隔两份的前面那份字符串， 拼接在字符串 htdocs 的后面之后就输出存储到数组 path 中， 相当于现在 path 中存储着一哥字符串
+  sprintf(path, "htdocs%s", url);     // 拼接好 web服务器要访问的文件path
+  
+  //如果 path 数组中的这个字符的最后一哥字符是以 / 结尾， 就拼接上一个 "index.html" 字符串， 首页的意思
+  if (path[strlen(path) - 1] == '/')
+    strcat(path, "index.html");
+    
+  // 在系统上查询该文件是否存在
+  if (stat(path, &st) == -1) 
+  {
+    // 如果不存在， 那把这次 http 的请求后续的内容( head 和  body ) 全部读完并忽略
+    while ( (numchars > 0) && strcmp("\n", buf) )       // strcmp("\n", buf) 似乎是都为负数的？？
+      numchars = get_line(client, buf, sizeof(buf));
+    
+    //然后返回一哥找不到文件的 response 给客户端
+    not_found(client);  
+  }
+  else          // 如果系统上的文件是存在的
+  {
+    // 文件存在， 那去跟常量 S_IFMT 相与， 相与之后的值可以用来判断该文件是什么类型的
+    //S_IFMT参读《TLPI》P281，与下面的三个常量一样是包含在<sys/stat.h>
+    if ((st.st_mode & S_IFMT) == S_IFDIR)
+      // 如果这个文件是个目录，那就需要再在 path 后面拼接一个 "/index.html" 的字符串
+      strcat(path, "/index.html");
+      
+      // S_IXUSR, S_IXGRP, S_IXOTH三者可以参考  <TLPI> P295
+    if ( (st.st_mode & S_IXUSR) ||
+         (st.st_mode & S_IXGRP) ||
+         (st.st_mode & S_IXOTH)      )
+       {
+         cgi = 1;  
+       }
   }
 }
 
