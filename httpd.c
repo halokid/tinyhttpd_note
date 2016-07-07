@@ -91,21 +91,40 @@ void accept_request(int client)
   //跳过所有的空白字符（空格）
   while (ISspace(buf[j]) && j < sizeof(buf))
     j++;
+
+  /*
+    client 的请求包是类似这样的
+    -----------------------------------------------------------
+    GET /wenqian1991/article/details/46011357 HTTP/1.1
+    Host: blog.csdn.net
+    Connection: keep-alive
+    Cache-Control: max-age=0
+    Accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/webp;q=0.8
+    Upgrade-Insecure-Requests: 1
+    User-Agent: Mozilla/5.0 (Windows NT 6.1; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko)   Chrome/49.0.2623.110 Safari/537.36
+    Referer: https://www.google.com/
+    Accept-Encoding: gzip, deflate, sdch
+    Accept-Language: zh-CN,zh;q=0.8,en;q=0.6
+    Cookie: uuid_tt_dd=-3892669430925408839_20160408; _ga=GA1.2.765473712.1460106018;   bdshare_firstime=1460106219320; UN=lqy5589731; UE="lqy82049406@163.com"; BT=1463121186753;  Hm_lvt_6bcd52f51e9b3dce32bec4a3997715ac=1464068810; _JQCMT_ifcookie=1;  _JQCMT_browser=d6577a7eaffa271e19d7ca2e40316b72; lzstat_uv=4179373932551097003|3235372@2955225@3609449;   __utma=17226283.765473712.1460106018.1467184641.1467184641.1;   __utmz=17226283.1467184641.1.1.utmcsr=baidu|utmccn=(organic)|utmcmd=organic;  __message_district_code=440000; uuid=7b98c237-ac5c-4ec9-8789-de5e941d8f74;  aliyungf_tc=AQAAAPVjF3aviAIA6vghebLMX5t7IhqF; __message_sys_msg_id=0; __message_gu_msg_id=0;  __message_cnel_msg_id=0; __message_in_school=0; dc_tos=o9xsjg
+    If-None-Match: W/"1620ebe44cee90195723e96fe531ac9f"
+-----------------------------------------------------------------
+  */
   
   // 然后把 URL 读出来放到 URL 数组中
+  // 从下一个不是空字符的 字符开始取值， 那么就可以取得 客户端请求过来的 URL 地址, 从这位开始组合 URL
   while(!ISspace(buf[j]) && (i < sizeof(url) - 1) && (j < sizeof(buf)))
   {
     url[i] = buf[j];
     i++;
     j++;
   }
-  url[i] = '\0';
+  url[i] = '\0';      // 处理完毕就得到了 客户端请求的 url 
   
   // 如果这个请求是一个 GET 方法的话
   if (strcasecmp(method, "GET") == 0)
   {
     //用一个指针指向 url,  query_string 是一个指针
-    query_string = url;
+    query_string = url;     // query_string 这样定义，就是 rul整个字符的指针开始的位置
   
     // 去遍历这个 URL， 跳过字符 ? 前面的所有字符， 如果遍历完毕也没找到字符 ? ， 则退出循环
     while ( (*query_string != '?') && (*query_string != '\0'))
@@ -123,7 +142,7 @@ void accept_request(int client)
     }
   } // END IF GET METHOD
   
-  //将前面分隔两份的前面那份字符串， 拼接在字符串 htdocs 的后面之后就输出存储到数组 path 中， 相当于现在 path 中存储着一哥字符串
+  //将前面分隔两份的前面那份字符串， 拼接在字符串 htdocs 的后面之后就输出存储到数组 path 中， 相当于现在 path 中存储着一个字符串
   sprintf(path, "htdocs%s", url);     // 拼接好 web服务器要访问的文件path
   
   //如果 path 数组中的这个字符的最后一哥字符是以 / 结尾， 就拼接上一个 "index.html" 字符串， 首页的意思
@@ -250,6 +269,22 @@ void error_die(const char *sc)
 
 /*
  执行 cgi 程序脚本， 需要设置相应的环境变量， 比如如果你要跑 PHP 程序， 那么linux 的环境 env 必须要可以执行PHP程序 
+ 
+ ------------------------------------------------------
+ 这里的理解重点就是 为什么要用两个 管道来做？？？
+ 因为 linux 系统的 cgi 都是标准输出输入的 ，  STDIN,  STDOUT,  如果要把标准的输出输入获得，那么有一种方式
+ 就是把 标准的输出输入 导向 到管道去
+ 那为什么用两个管道 而不是 一个呢？？
+ 因为本来一条管理就是 可以理解为 就是储存一个信息的， 只是 一端是写信息， 一端是读信息
+ 既然我们需要 一个标准输入，  一个标准输出， 那么我们就需要两个管道
+ 
+ 关于命名的问题
+ cgi_input 代表  STDIN
+管道的操作情况，  子进程的时候， 把标准输入  STDIN的句柄 赋给 管道 cgi_input 的读端  cgi_input[0], STDIN 是读取的，也就是读取 管道的内容
+ 
+ cgi_output 代表  STDOUT
+管道的操作情况，  子进程的时候， 把标准输出  STDOUT的句柄 赋给 管道 cgi_output 的写端  cgi_input[1], STDOUT是输出的，也就是输出到 管理的写端
+ ------------------------------------------------------
 */
 void execute_cgi(int client, const char *path, 
                   const char *method, const char *query_string)
@@ -380,6 +415,9 @@ void execute_cgi(int client, const char *path,
     }
     
     // TODO 当进入子进程的时候， 只是设置了一些环境变量 ??
+    // 最后讲子进程替换成另一个进程并执行 cgi 脚本
+    execl(path, path, NULL);
+    exit(0);
   }
   else        // 在父进程
   {
@@ -393,7 +431,7 @@ void execute_cgi(int client, const char *path,
       for (i = 0; i < content_length; i++) 
       {
         recv(client, &c, 1, 0);
-        write(cgi_input[1], &c, 1);
+        write(cgi_input[1], &c, 1);     //
       }
     }
     
@@ -551,7 +589,111 @@ void serve_file(int client, const char *filename)
 * on a specified port.  If the port is 0, then dynamically allocate a
 * port and modify the original port variable to reflect the actual
 * port.
+
+* 返回 socket 连接句柄
 */
+int startup(u_short *port) 
+{
+  int httpd = 0;
+  //sockaddr_in 是 IPV4 的套接字地址结构
+  struct sockaddr_in name;
+  
+  //socket() 用于创建一个用于 socket 的描述符
+  //这里的 PF_INET 其实是与 AF_INET 同义
+  httpd = socket(PF_INET, SOCK_STREAM, o);
+  if (httpd == -1)
+    error_die("socket");
+    
+  memset(&name, 0, sizeof(name));   // 给 name 设置一段内存
+  name.sin_family = AF_INET;
+  
+  //将 *port 转换成以网络字节序表示的 16 位整数
+  name.sin_port = htons(*port);
+  //大多实现都将其 定义成了  0.0.0.0 
+  name.sin_addr.s_addr = htonl(INADDR_ANY);
+  
+  //如果传进去的 sockaddr 结构中的 sin_port 指定为 0,  这时系统会选择一个临时的端口号
+  if ( bind(httpd, (struct sockaddr *)&name, sizeof(name)) < 0 )
+    error_die("bind")
+    
+  // 如果调用 bind 后端口号仍然是 0， 则手动调用 getsockname() 获取端口号
+  if (*port == 0)
+  {
+    int namelen = sizeof(name);
+    // 调用 getsockname() 获取系统给 httpd 这个 socket 随机分配的端口号
+    if (getsockname(httpd, (struct sockaddr *)&name, &namelen) == -1)
+      error_die("getsockname");
+    *port = ntohs(name.sin_port);
+  } 
+  
+  //最初的 BSD socket 实现中， backlog 的上限是5
+  if (listen(httpd, 5) < 0)
+    error_die("listen");
+    
+  return(httpd);
+}
+
+
+/*
+  反馈请求的方法无法执行的信息给客户端
+*/
+void unimplemented(int client)
+{
+  char buf[1024];
+  
+  sprintf(buf, "HTTP/1.0 501 Method Not Implemented\r\n");
+  send(client, buf, strlen(buf), 0);
+  
+  sprintf(buf, SERVER_STRING);
+  send(client, buf, strlen(buf), 0);
+  
+  sprintf(buf, "Content-Type: text/html\r\n");
+  send(client, buf, strlen(buf), 0);
+  
+  sprintf(buf, "\r\n");
+  send(client, buf, strlen(buf), 0);
+  
+  sprintf(buf, "<HTML><HEAD><TITLE>Method Not Implemented\r\n");
+  send(client, buf, strlen(buf), 0);
+  
+  sprintf(buf, "</TITLE></HEAD>\r\n");
+  send(client, buf, strlen(buf), 0);
+  
+  sprintf(buf, "<BODY><P>HTTP request method not supported.\r\n");
+  send(client, buf, strlen(buf), 0);
+  
+  sprintf(buf, "</BODY></HTML>\r\n");
+  send(client, buf, strlen(buf), 0);
+}
+
+int main(void)
+{
+  int server_sock = -1;
+  u_short port = 0;
+  int client_sock = -1;
+  
+  //sockaddr_in 是 IPV4 的套接字地址结构
+  struct sockaddr_in client_name;
+  int client_name_len = sizeof(client_name);
+  
+  server_sock = startup(&port);
+  printf("httpd running on port %d\n", port);
+  
+  while(1)
+  {
+    //阻塞等待客户端的连接
+    client_sock = accept(server_sock, (struct sockaddr *)&client_name, &client_name_len);
+    
+    if (client_sock == -1)
+      error_die("accept");
+    
+    accept_request(client_sock);
+  }
+  
+  close(server_sock);
+  
+  return 0;
+}
 
 
 
@@ -560,7 +702,4 @@ void serve_file(int client, const char *filename)
 
 
 
-
-
-
-
+  
