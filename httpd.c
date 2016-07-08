@@ -1,6 +1,10 @@
 /**
  手写原版  tnyhttpd 源码加注释
 **/
+/*
+  重点是理解在linux多进程当中用管道通信的模型
+
+*/
 
 #include <stdio.h>
 #include <sys/socket.h>
@@ -280,7 +284,7 @@ void error_die(const char *sc)
  
  关于命名的问题
  cgi_input 代表  STDIN
-管道的操作情况，  子进程的时候， 把标准输入  STDIN的句柄 赋给 管道 cgi_input 的读端  cgi_input[0], STDIN 是读取的，也就是读取 管道的内容
+管道的操作情况，  子进程的时候， 把标准输入  STDIN的句柄 赋给 管道 cgi_input 的读端  cgi_input[0], STDIN 是读取的，也就是读取 管道的内容, 然后在父进程接收大 客户端请求的时候， 就
  
  cgi_output 代表  STDOUT
 管道的操作情况，  子进程的时候， 把标准输出  STDOUT的句柄 赋给 管道 cgi_output 的写端  cgi_input[1], STDOUT是输出的，也就是输出到 管理的写端
@@ -430,8 +434,8 @@ void execute_cgi(int client, const char *path,
     {
       for (i = 0; i < content_length; i++) 
       {
-        recv(client, &c, 1, 0);
-        write(cgi_input[1], &c, 1);     //
+        recv(client, &c, 1, 0);         // 定义了 char c 之后， 第一次在这里使用， 一个一个字符接收
+        write(cgi_input[1], &c, 1);     //一个一个字符写入
       }
     }
     
