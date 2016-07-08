@@ -15,6 +15,7 @@
 #include <ctype.h>
 #include <strings.h>
 #include <string.h>
+#include <sys/stat.h>
 #include <sys/wait.h>
 #include <stdlib.h>
 
@@ -24,7 +25,7 @@
 
 void accept_request(int);     
 void bad_request(int);
-void cat(int FILE *);
+void cat(int, FILE *);
 void cannot_execute(int);
 void error_die(const char *);
 void execute_cgi(int, const char *, const char *, const char *);
@@ -73,11 +74,12 @@ void accept_request(int client)
   while (!ISspace(buf[j]) && (i < sizeof(method) - 1))
   {
     // 读取到 buf[j] isspace 的时候， 证明 HTTP 已经换行了， 所以第一次换行， 得到的就是 HTTP 头的内容，里面包含了 HTTP 的方法
-    method[i] = buf[j]
+    method[i] = buf[j];
     i++;
     j++;
   }
   method[i] = '\0';
+  printf("method: %s\n", method);   //TODO
 
   //如果请求的方法不是 GET 或者 POST 任意一种的话，就直接发送 response 告诉客户端没实现该方法
   if (strcasecmp(method, "GET") && strcasecmp(method, "POST"))
@@ -123,6 +125,7 @@ void accept_request(int client)
     j++;
   }
   url[i] = '\0';      // 处理完毕就得到了 客户端请求的 url 
+  printf("url: %s\n", url);   //TODO
   
   // 如果这个请求是一个 GET 方法的话
   if (strcasecmp(method, "GET") == 0)
@@ -144,10 +147,12 @@ void accept_request(int client)
       // 使指针指向字符 ? 后面的那个字符
       query_string++;
     }
-  } // END IF GET METHOD
+  } // END IF GET METHOD  
+  printf("query_string: %s\n", query_string);   //TODO
   
   //将前面分隔两份的前面那份字符串， 拼接在字符串 htdocs 的后面之后就输出存储到数组 path 中， 相当于现在 path 中存储着一个字符串
-  sprintf(path, "htdocs%s", url);     // 拼接好 web服务器要访问的文件path
+  sprintf(path, "htdocs%s", url);     // 拼接好 web服务器要访问的文件path 
+  printf("path: %s\n", path);   //TODO
   
   //如果 path 数组中的这个字符的最后一哥字符是以 / 结尾， 就拼接上一个 "index.html" 字符串， 首页的意思
   if (path[strlen(path) - 1] == '/')
@@ -165,11 +170,14 @@ void accept_request(int client)
   }
   else          // 如果系统上的文件是存在的
   {
+    printf("------------- run has file -----------  \n");   //TODO
     // 文件存在， 那去跟常量 S_IFMT 相与， 相与之后的值可以用来判断该文件是什么类型的
     //S_IFMT参读《TLPI》P281，与下面的三个常量一样是包含在<sys/stat.h>
-    if ((st.st_mode & S_IFMT) == S_IFDIR)
+    if ((st.st_mode & S_IFMT) == S_IFDIR){
+      printf("------------- visit is DIR -----------  \n");   //TODO
       // 如果这个文件是个目录，那就需要再在 path 后面拼接一个 "/index.html" 的字符串
       strcat(path, "/index.html");
+    }
       
       // S_IXUSR, S_IXGRP, S_IXOTH三者可以参考  <TLPI> P295
       // 如果这个文件是一个可执行的文件， 不论是属于用户/组/其他这三者任何类型的, 就将 cgi 标志变量设为1 
@@ -181,10 +189,13 @@ void accept_request(int client)
     }
   
     // TODO 这里来判断是否是执行 CGI 还是 执行 普通的文件
-    if (!cgi)
+    if (!cgi) {
+      printf("------------- serve_file static file -----------  \n");   //TODO
       serve_file(client, path);       // 如果不需要cgi机制的话
-    else
-      execute_cgi(client, path, method, query_string);    //如果需要则调用cgi
+    }
+    else {
+      execute_cgi(client, path, method, query_string);    //如果需要则调用cgi 
+    }
       
   }
   close(client);      // 关闭客户端的socket连接
@@ -409,7 +420,7 @@ void execute_cgi(int client, const char *path,
     
     // 根据 http 请求的不同方法， 构造并存储不同的环境变量
     if (strcasecmp(method, "GET") == 0) {
-      sprintf(query_env, "QUERY_STRING=%s", query_string)
+      sprintf(query_env, "QUERY_STRING=%s", query_string);
       putenv(query_env);
     }
     else      // POST
@@ -467,14 +478,14 @@ int get_line(int sock, char *buf, int size)
   while ( (i < size - 1) && (c != '\n'))    //????
   {
     n = recv(sock, &c, 1, 0);
-    printf("%02X\n", c);
+    //printf("%02X\n", c);
     
     if (n > 0)      // 如果能读到内容, n > 0, 表示如果能一直读取到内容的话
     {
-      if (c == '\n')      // 如果读取到换行符, HTTP包第一次换行符
+      if (c == '\r')      // 如果读取到换行符, HTTP包第一次换行符
       {
           n = recv(sock, &c, 1, MSG_PEEK);
-          printf("%2X\n", c);
+          //printf("%2X\n", c);
           if ((n > 0) && (c == '\n'))     // 如果读取到 HTTP 包第二次换行符
             recv(sock, &c, 1, 0);
           else
@@ -556,6 +567,7 @@ void not_found(int client)
 */
 void serve_file(int client, const char *filename)
 {
+  printf(" ------------  static file ------------\n");
   FILE *resource = NULL;
   int numchars = 1;
   char buf[1024];
@@ -565,17 +577,22 @@ void serve_file(int client, const char *filename)
   buf[1] = '\0';
   
   // 循环作用是读取并忽略掉这个 http 请求后面的所有内容
+  printf(" start while: \n");
   while ((numchars > 0) && strcmp("\n", buf)) {
     numchars = get_line(client, buf, sizeof(buf));
+    printf(" ------ dead in while ------ \n");
   }
+  printf(" numchars: %d\n", numchars);
   
   // 打开这个传进来的这个路径所指的文件
   resource = fopen(filename, "r");
   if (resource == NULL) {
+    printf(" file not found \n");
     not_found(client);
   }
   else 
   {
+    printf(" file is found \n");
     // 打开成功后， 将这个文件的基本信息封装成  response 的头部(header) 并返回
     headers(client, filename);
     //接着把这个文件的内容读出来作为 response  的 body 发送到客户端
@@ -604,7 +621,7 @@ int startup(u_short *port)
   
   //socket() 用于创建一个用于 socket 的描述符
   //这里的 PF_INET 其实是与 AF_INET 同义
-  httpd = socket(PF_INET, SOCK_STREAM, o);
+  httpd = socket(PF_INET, SOCK_STREAM, 0);
   if (httpd == -1)
     error_die("socket");
     
@@ -618,7 +635,7 @@ int startup(u_short *port)
   
   //如果传进去的 sockaddr 结构中的 sin_port 指定为 0,  这时系统会选择一个临时的端口号
   if ( bind(httpd, (struct sockaddr *)&name, sizeof(name)) < 0 )
-    error_die("bind")
+    error_die("bind");
     
   // 如果调用 bind 后端口号仍然是 0， 则手动调用 getsockname() 获取端口号
   if (*port == 0)
